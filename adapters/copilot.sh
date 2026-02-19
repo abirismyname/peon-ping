@@ -36,10 +36,15 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.sessionId // empty' 2>/dev/null)
 [ -z "$SESSION_ID" ] && SESSION_ID="copilot-$$"
 CWD=$(echo "$INPUT" | jq -r '.cwd // ""' 2>/dev/null)
 [ -z "$CWD" ] && CWD="${PWD}"
+SESSION_MARKER="$PEON_DIR/.copilot-session-${SESSION_ID}"
+TOOL_NAME=""
+ERROR_MSG=""
 
 # Map Copilot hook events to peon.sh PascalCase events
 case "$COPILOT_EVENT" in
   sessionStart)
+    find "$PEON_DIR" -name ".copilot-session-*" -mtime +0 -delete 2>/dev/null
+    touch "$SESSION_MARKER"
     EVENT="SessionStart"
     ;;
   sessionEnd)
@@ -48,7 +53,6 @@ case "$COPILOT_EVENT" in
     ;;
   userPromptSubmitted)
     # Prompt submitted — SessionStart handles greeting, this handles spam detection
-    SESSION_MARKER="$PEON_DIR/.copilot-session-${SESSION_ID}"
     find "$PEON_DIR" -name ".copilot-session-*" -mtime +0 -delete 2>/dev/null
     if [ ! -f "$SESSION_MARKER" ]; then
       touch "$SESSION_MARKER"
@@ -67,7 +71,9 @@ case "$COPILOT_EVENT" in
     ;;
   errorOccurred)
     # Error occurred during session
-    EVENT="TaskError"
+    EVENT="PostToolUseFailure"
+    TOOL_NAME="Bash"
+    ERROR_MSG="Copilot errorOccurred"
     ;;
   *)
     # Unknown event — skip
@@ -75,6 +81,7 @@ case "$COPILOT_EVENT" in
     ;;
 esac
 
-echo "$INPUT" | jq --arg event "$EVENT" --arg sid "$SESSION_ID" --arg cwd "$CWD" \
-  '{hook_event_name: $event, notification_type: "", cwd: $cwd, session_id: $sid, permission_mode: ""}' \
+echo "$INPUT" | jq --arg event "$EVENT" --arg sid "$SESSION_ID" --arg cwd "$CWD" --arg tool "$TOOL_NAME" --arg err "$ERROR_MSG" \
+  '{hook_event_name: $event, notification_type: "", cwd: $cwd, session_id: $sid, permission_mode: ""} +
+   (if $tool != "" then {tool_name: $tool, error: $err} else {} end)' \
   | bash "$PEON_DIR/peon.sh"

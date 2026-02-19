@@ -20,7 +20,7 @@ teardown() {
 # Copilot passes event name as $1 and JSON on stdin
 run_copilot() {
   local event="$1"
-  local json="${2:-{}}"
+  local json="${2:-"{}"}"
   export PEON_TEST=1
   echo "$json" | bash "$COPILOT_SH" "$event" 2>"$TEST_DIR/stderr.log"
   COPILOT_EXIT=$?
